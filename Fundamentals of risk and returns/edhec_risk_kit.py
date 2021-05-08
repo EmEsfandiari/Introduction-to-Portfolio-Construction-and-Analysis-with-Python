@@ -15,6 +15,8 @@ def drawdown(return_series: pd.Series):
         'Peaks': previous_peaks,
         'Drawdown':drawdowns
     })
+ 
+    
     
 def get_ffme_returns():
     """
@@ -27,6 +29,8 @@ def get_ffme_returns():
     rets.index = pd.to_datetime(rets.index, format="%Y%m").to_period("M")
     return rets
 
+
+
 def get_hfi_returns():
     """
     Load and format the EDHEC Hedge Fund Index Returns
@@ -36,6 +40,19 @@ def get_hfi_returns():
     hfi.index = hfi.index.to_period("M")
     return hfi
 
+
+
+def get_ind_returns():
+    """
+    Load and format the Ken French 30 Industry Portfolios Value Weighted Monthly Returns
+    """
+    ind = pd.read_csv('ind30_m_vw_rets.csv',header=0,index_col=0, parse_dates=True)/100
+    ind.index = pd.to_datetime(ind.index,format ='%Y%m').to_period('M')
+    ind.columns = ind.columns.str.strip()
+    return ind
+
+
+
 def semideviation (r):
     """
     Returns the semideviation aka negative semideviation of r 
@@ -43,6 +60,8 @@ def semideviation (r):
     """
     is_negative = r<0
     return r[is_negative].std(ddof=0)
+
+
 
 def skewness (r):
     """
@@ -56,6 +75,8 @@ def skewness (r):
     exp = (demeaned_r**3).mean()
     return exp/sigma_r**3
 
+
+
 def kurtosis (r):
     """
     Alternative to scipy.stats.kurtosis()
@@ -68,6 +89,8 @@ def kurtosis (r):
     exp = (demeaned_r**4).mean()
     return exp/sigma_r**4
 
+
+
 import scipy.stats
 def is_normal(r, level=0.01):
     """
@@ -77,6 +100,8 @@ def is_normal(r, level=0.01):
     """
     statistic, p_value = scipy.stats.jarque_bera(r)
     return p_value >level
+
+
 
 def var_historic(r,level = 5):
     """
@@ -90,6 +115,8 @@ def var_historic(r,level = 5):
         return -np.percentile(r,level)
     else: 
         raise TypeError("Expected to be a Series or DataFrame")
+        
+        
         
 from scipy.stats import norm
 def var_gaussian(r,level = 5,modified = False):
@@ -110,6 +137,8 @@ def var_gaussian(r,level = 5,modified = False):
            )
     return -(r.mean() + z * r.std(ddof=0))
 
+
+
 def cvar_historic(r,level = 5):
     """
     Computes the Conditional VaR of Series or DataFrame
@@ -124,3 +153,70 @@ def cvar_historic(r,level = 5):
     else: 
         raise TypeError("Expected r to be a Series or DataFrame")
 
+        
+        
+def annualize_rets(r, periods_per_year):
+    """
+    Annualizes a set of returns
+    We should infer the period per year 
+    but that is currently left as an exercise for the reader
+    """
+    compounded_growth = (1+r).prod()
+    n_periods = r.shape[0]
+    return compounded_growth**(periods_per_year/n_periods)-1
+
+        
+
+def annualized_vol(r,periods_per_year):
+    """
+    Annualizes the vol of a set of returns
+    We should infer the periods per year
+    but that is currently left as an execise to the reader
+    """
+    return r.std()*(periods_per_year**0.5)
+
+
+
+def sharpe_ratio(r,riskfree_rate, periods_per_year):
+    """
+    Computes the annualized sharpe ratio of a set of returns
+    """
+    # convert the annual risk free rate to per period
+    rf_per_period = (1+riskfree_rate)**(1/periods_per_year)-1
+    excess_ret = r-rf_per_period
+    ann_ex_ret = annualize_rets(excess_ret,periods_per_year)
+    ann_vol = annualized_vol(r,periods_per_year)
+    return ann_ex_ret/ann_vol
+
+
+
+def portfolio_ret(weights,returns):
+    """
+    Weights -> Returns
+    """
+    return weights.T @ returns # @ indicates matrix multiplication
+
+
+
+def portfolio_vol(weights,covmat):
+    """
+    Weights -> Volatility
+    """
+    return (weights.T @ covmat @ weights )**0.5
+
+
+import numpy as np
+def plot_ef2(n_points, er, cov, style = ".-"):
+    """
+    Plots the 2-asset efficient frontier
+    """
+    if er.shape[0] != 2 or cov.shape[0] != 2:
+        raise ValueError("plot_ef2 can only plot two asset frontiers")
+    weights = [np.array([w,1-w]) for w in np.linspace(0,1,n_points)]
+    rets = [portfolio_ret(w,er) for w in weights]
+    vols = [portfolio_vol(w,cov) for w in weights]
+    ef = pd.DataFrame({
+        "Returns": rets,
+        "Volatility": vols
+    })
+    return ef.plot.line(x = "Volatility", y = "Returns", style = style)
